@@ -15,6 +15,7 @@ import {
   Keyboard
 } from "react-native";
 import { Ionicons } from '@expo/vector-icons'; // Make sure to install expo icons
+import { NativeSyntheticEvent, TextInputKeyPressEventData } from 'react-native';
 
 export default function App() {
   interface Message {
@@ -50,14 +51,29 @@ export default function App() {
     }
   }, [isLoading]);
 
-  // Scroll to bottom when new messages arrive
+ // Add this effect to handle autoscrolling specifically for model responses
+useEffect(() => {
+  // Only scroll if there are messages and the last message is from the bot (not user)
+  if (messages.length > 0 && !messages[messages.length - 1].isUser) {
+    // Scroll immediately
+    scrollViewRef.current?.scrollToEnd({ animated: true });
+    
+    // Also scroll after a short delay to ensure content has rendered completely
+    const timer = setTimeout(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }, 100);
+    
+    return () => clearTimeout(timer);
+  }
+}, [messages, messages.length > 0 ? messages[messages.length - 1].text : '']);
+
+  // Additional effect for streaming content scrolling
   useEffect(() => {
-    if (messages.length > 0) {
-      setTimeout(() => {
-        scrollViewRef.current?.scrollToEnd({ animated: true });
-      }, 100);
+    // This will trigger scrolling when the last message's text changes
+    if (messages.length > 0 && !messages[messages.length - 1].isUser) {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
     }
-  }, [messages.length]);
+  }, [messages.length > 0 ? messages[messages.length - 1].text : null]);
 
   const theme = {
     backgroundColor: isDarkMode ? '#121212' : '#f5f5f7',
@@ -96,6 +112,7 @@ export default function App() {
     setIsLoading(true);
     setPrompt("");
     setInputHeight(40);
+
 
     try {
       const response = await fetch("http://127.0.0.1:8000/api/ask/", {
@@ -146,6 +163,22 @@ export default function App() {
     if (!date) return '';
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
+
+  const handleKeyPress = (e: NativeSyntheticEvent<TextInputKeyPressEventData>) => {
+    if (e.nativeEvent.key === 'Enter') {
+      // Note: React Native doesn't support shiftKey in the same way as web browsers
+      
+      // Only send if there's text and we're not already loading
+      if (prompt.trim() && !isLoading) {
+        handleSend();
+      }
+      
+      // Return true to indicate we've handled the key press
+      return true;
+    }
+    return false;
+  };
+
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.backgroundColor }]}>
@@ -259,14 +292,15 @@ export default function App() {
               {
                 backgroundColor: theme.inputBackgroundColor,
                 color: theme.textColor,
-                minHeight: 40, // Minimum height
-                maxHeight: 80, // Maximum height before scrollings
+                minHeight: 40,
+                maxHeight: 80,
               }
             ]}
             placeholder="Ask something..."
             value={prompt}
             onChangeText={setPrompt}
             multiline
+            onKeyPress={handleKeyPress} // Add this line
             onContentSizeChange={(e) => {
               setInputHeight(e.nativeEvent.contentSize.height);
             }}
